@@ -1,1 +1,10 @@
-[]
+[
+    {
+        "nom": "Template de référence",
+        "secteur": "Avocats (template)",
+        "url": "https://site-template-jordi-deb0.vercel.app",
+        "adminUrl": "https://site-template-jordi-deb0.vercel.app/admin.html",
+        "repo": "https://github.com/jordivuong/site-template",
+        "hebergement": "Vercel"
+    }
+]
