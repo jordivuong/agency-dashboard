@@ -79,6 +79,23 @@
         .empty-state {
             text-align: center; padding: 60px 20px; color: #909399;
         }
+
+        .health-dot {
+            display: inline-block; width: 9px; height: 9px; border-radius: 50%;
+            background: #c0c4cc; margin-right: 6px; vertical-align: middle;
+        }
+        .health-dot.ok { background: var(--success); }
+        .health-dot.down { background: var(--danger); }
+        .health-label { font-size: 12px; color: #909399; }
+
+        .tech-files {
+            margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border);
+            font-size: 12.5px; color: #606266;
+        }
+        .tech-files .tf-title { font-weight: 700; text-transform: uppercase; font-size: 11px; color: #909399; margin-bottom: 6px; }
+        .tech-files a { color: var(--accent); text-decoration: none; margin-right: 4px; }
+        .tech-files a:hover { text-decoration: underline; }
+        .tech-files .sep { color: var(--border); margin: 0 4px; }
     </style>
 </head>
 <body>
@@ -98,7 +115,10 @@
     </header>
     <div class="container">
         <div class="save-bar">
-            <button class="btn btn-primary" onclick="addSite()">+ Ajouter un site</button>
+            <div style="display:flex; gap:10px;">
+                <button class="btn btn-primary" onclick="addSite()">+ Ajouter un site</button>
+                <button class="btn btn-outline" id="health-btn" onclick="checkHealth()">🔄 Vérifier les sites</button>
+            </div>
             <div style="display:flex; align-items:center; gap:14px;">
                 <span class="save-msg" id="save-msg"></span>
                 <button class="btn btn-success" id="save-btn" onclick="saveToGitHub()">💾 Enregistrer</button>
@@ -168,7 +188,10 @@
             card.className = 'site-card';
             card.innerHTML = `
                 <div class="site-card-header">
-                    <span class="badge">${(s.hebergement || 'Vercel')}</span>
+                    <div>
+                        <span class="badge">${(s.hebergement || 'Vercel')}</span>
+                        <span class="health-label" id="health-${idx}"><span class="health-dot"></span>non vérifié</span>
+                    </div>
                     <button class="btn btn-danger" onclick="deleteSite(${idx})">Supprimer</button>
                 </div>
                 <div class="fields-grid">
@@ -206,9 +229,95 @@
                     ${s.adminUrl ? `<a href="${s.adminUrl}" target="_blank" rel="noopener">⚙️ Admin</a>` : ''}
                     ${s.repo ? `<a href="${s.repo}" target="_blank" rel="noopener">🐙 Repo</a>` : ''}
                 </div>
+                ${techFilesHTML(s.repo)}
             `;
             container.appendChild(card);
         });
+    }
+
+    /* ---------- Liens fichiers techniques (édition directe sur GitHub) ---------- */
+    function parseRepo(repoUrl) {
+        if (!repoUrl) return null;
+        try {
+            const u = new URL(repoUrl);
+            if (u.hostname !== 'github.com') return null;
+            const parts = u.pathname.replace(/^\/|\/$/g, '').replace(/\.git$/, '').split('/');
+            if (parts.length < 2) return null;
+            return { owner: parts[0], name: parts[1] };
+        } catch (e) {
+            return null;
+        }
+    }
+
+    function techFilesHTML(repoUrl) {
+        const r = parseRepo(repoUrl);
+        if (!r) return '';
+        const base = `https://github.com/${r.owner}/${r.name}`;
+        const files = [
+            ['build.js', 'build.js'],
+            ['style.css', 'style.css'],
+            ['data.json', 'data.json'],
+            ['vercel.json', 'vercel.json'],
+            ['.github/workflows/deploy-ftp.yml', 'déploiement FTP']
+        ];
+        const fileLinks = files.map(([path, label]) =>
+            `<a href="${base}/edit/main/${path}" target="_blank" rel="noopener">${label}</a>`
+        ).join('<span class="sep">·</span>');
+        return `
+            <div class="tech-files">
+                <div class="tf-title">🔧 Éditer sur GitHub</div>
+                ${fileLinks}
+                <span class="sep">·</span>
+                <a href="https://github.dev/${r.owner}/${r.name}" target="_blank" rel="noopener">tout le repo (VS Code web)</a>
+                <span class="sep">·</span>
+                <a href="${base}/actions" target="_blank" rel="noopener">historique déploiements</a>
+            </div>
+        `;
+    }
+
+    /* ---------- Vérification santé des sites ---------- */
+    async function checkHealth() {
+        const btn = document.getElementById('health-btn');
+        btn.disabled = true;
+        btn.textContent = '⏳ Vérification…';
+
+        sites.forEach((s, idx) => {
+            const el = document.getElementById(`health-${idx}`);
+            if (el && s.url) el.innerHTML = '<span class="health-dot"></span>vérification…';
+        });
+
+        try {
+            const res = await fetch('/api/health', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ password: adminPassword })
+            });
+            const body = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                alert('Erreur : ' + (body.error || 'échec de la vérification'));
+                return;
+            }
+            const byUrl = {};
+            (body.results || []).forEach(r => { byUrl[r.url] = r; });
+
+            sites.forEach((s, idx) => {
+                const el = document.getElementById(`health-${idx}`);
+                if (!el) return;
+                if (!s.url) { el.innerHTML = '<span class="health-dot"></span>pas d\'URL'; return; }
+                const r = byUrl[s.url];
+                if (!r) { el.innerHTML = '<span class="health-dot"></span>?'; return; }
+                if (r.ok) {
+                    el.innerHTML = `<span class="health-dot ok"></span>en ligne (${r.ms}ms)`;
+                } else {
+                    el.innerHTML = `<span class="health-dot down"></span>${r.status ? 'erreur ' + r.status : 'injoignable'}`;
+                }
+            });
+        } catch (e) {
+            alert('Erreur réseau : ' + e.message);
+        } finally {
+            btn.disabled = false;
+            btn.textContent = '🔄 Vérifier les sites';
+        }
     }
 
     function addSite() {

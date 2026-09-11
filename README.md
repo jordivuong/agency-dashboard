@@ -11,6 +11,17 @@ le bouton « Enregistrer » committe `sites.json` sur GitHub via `api/save.js`
 Rien à installer, pas de base de données — la liste des sites, c'est juste
 `sites.json`.
 
+**Fichiers techniques** : chaque carte affiche des liens (`build.js`,
+`style.css`, `data.json`, `vercel.json`, workflow FTP) qui ouvrent
+directement l'éditeur web de GitHub sur ce fichier précis — modif + commit
+sans rien télécharger. Calculés depuis le champ « Repo GitHub » de chaque
+site, rien à configurer en plus.
+
+**Santé des sites** : bouton « Vérifier les sites » → `api/health.js`
+relit `sites.json` côté serveur et teste chaque URL (code HTTP, temps de
+réponse). Ne prend aucune URL depuis le client, uniquement celles déjà
+enregistrées — pas de proxy HTTP ouvert.
+
 ## Variables d'environnement (Vercel → Project → Settings → Environment Variables)
 
 | Variable | Valeur |
