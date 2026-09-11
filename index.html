@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard — Sites clients</title>
+    <style>
+        :root {
+            --bg-color: #f4f6f8;
+            --panel-bg: #ffffff;
+            --primary: #1a2b4c;
+            --accent: #0073aa;
+            --success: #2ed573;
+            --danger: #d9534f;
+            --border: #dcdfe6;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg-color); color: #333; min-height: 100vh; }
+
+        /* ---------- Écran de connexion ---------- */
+        #login-screen {
+            position: fixed; inset: 0; background: var(--primary);
+            display: flex; align-items: center; justify-content: center; z-index: 100;
+        }
+        #login-screen .box {
+            background: white; padding: 40px; border-radius: 10px; width: 320px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+        }
+        #login-screen h1 { font-size: 18px; margin-bottom: 20px; color: var(--primary); }
+        #login-screen input {
+            width: 100%; padding: 12px; border: 1px solid var(--border); border-radius: 6px;
+            font-size: 15px; margin-bottom: 12px;
+        }
+        #login-screen button {
+            width: 100%; padding: 12px; border: none; border-radius: 6px; background: var(--primary);
+            color: white; font-weight: 600; cursor: pointer; font-size: 14px;
+        }
+        #login-error { color: var(--danger); font-size: 13px; margin-bottom: 10px; min-height: 16px; }
+
+        /* ---------- Dashboard ---------- */
+        #app { display: none; }
+        header.top {
+            background: var(--primary); color: white; padding: 20px 30px;
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        header.top h1 { font-size: 18px; }
+        .container { max-width: 900px; margin: 0 auto; padding: 30px 20px; }
+
+        .save-bar {
+            display: flex; justify-content: space-between; align-items: center;
+            margin-bottom: 20px; gap: 12px; flex-wrap: wrap;
+        }
+        .save-msg { font-size: 13px; color: #606266; }
+        .save-msg.ok { color: #1f9d55; font-weight: 600; }
+        .save-msg.err { color: var(--danger); font-weight: 600; }
+
+        .btn { padding: 10px 16px; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 13px; }
+        .btn-primary { background: var(--primary); color: white; }
+        .btn-success { background: var(--success); color: white; }
+        .btn-danger { background: var(--danger); color: white; }
+        .btn-outline { background: white; border: 1px solid var(--border); color: #606266; }
+        .btn:disabled { opacity: 0.6; cursor: wait; }
+
+        .site-card {
+            background: var(--panel-bg); border: 1px solid var(--border); border-radius: 8px;
+            padding: 18px 20px; margin-bottom: 14px;
+        }
+        .site-card-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; gap: 10px; }
+        .badge {
+            display: inline-block; font-size: 11px; font-weight: 700; text-transform: uppercase;
+            padding: 3px 8px; border-radius: 4px; background: #eef6fc; color: var(--accent); letter-spacing: 0.5px;
+        }
+
+        label { display: block; font-size: 11px; font-weight: bold; text-transform: uppercase; color: #909399; margin-top: 10px; margin-bottom: 4px; }
+        input, select { width: 100%; padding: 9px; border: 1px solid var(--border); border-radius: 4px; font-size: 14px; background: white; }
+
+        .fields-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 16px; }
+
+        .empty-state {
+            text-align: center; padding: 60px 20px; color: #909399;
+        }
+    </style>
+</head>
+<body>
+
+<div id="login-screen">
+    <div class="box">
+        <h1>🔒 Dashboard — Sites clients</h1>
+        <div id="login-error"></div>
+        <input type="password" id="login-password" placeholder="Mot de passe" autofocus>
+        <button onclick="tryLogin()">Se connecter</button>
+    </div>
+</div>
+
+<div id="app">
+    <header class="top">
+        <h1>📁 Sites clients</h1>
+    </header>
+    <div class="container">
+        <div class="save-bar">
+            <button class="btn btn-primary" onclick="addSite()">+ Ajouter un site</button>
+            <div style="display:flex; align-items:center; gap:14px;">
+                <span class="save-msg" id="save-msg"></span>
+                <button class="btn btn-success" id="save-btn" onclick="saveToGitHub()">💾 Enregistrer</button>
+            </div>
+        </div>
+
+        <div id="sites-list"></div>
+        <div class="empty-state" id="empty-state" style="display:none;">
+            Aucun site pour l'instant — clique sur « Ajouter un site ».
+        </div>
+    </div>
+</div>
+
+<script>
+    let sites = [];
+    let adminPassword = null;
+
+    document.getElementById('login-password').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') tryLogin();
+    });
+
+    async function tryLogin() {
+        const pw = document.getElementById('login-password').value;
+        const errBox = document.getElementById('login-error');
+        errBox.textContent = '';
+        if (!pw) return;
+
+        try {
+            const res = await fetch('/api/save', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ password: pw, verifyOnly: true })
+            });
+            if (!res.ok) {
+                const body = await res.json().catch(() => ({}));
+                errBox.textContent = body.error || 'Mot de passe incorrect';
+                return;
+            }
+            adminPassword = pw;
+            document.getElementById('login-screen').style.display = 'none';
+            document.getElementById('app').style.display = 'block';
+            loadSites();
+        } catch (e) {
+            errBox.textContent = "Erreur de connexion au serveur";
+        }
+    }
+
+    function loadSites() {
+        fetch('sites.json?v=' + Date.now())
+            .then(res => res.json())
+            .then(data => {
+                sites = Array.isArray(data) ? data : [];
+                render();
+            })
+            .catch(() => alert("Erreur au chargement de sites.json"));
+    }
+
+    function render() {
+        const container = document.getElementById('sites-list');
+        const empty = document.getElementById('empty-state');
+        container.innerHTML = '';
+
+        empty.style.display = sites.length === 0 ? 'block' : 'none';
+
+        sites.forEach((s, idx) => {
+            const card = document.createElement('div');
+            card.className = 'site-card';
+            card.innerHTML = `
+                <div class="site-card-header">
+                    <span class="badge">${(s.hebergement || 'Vercel')}</span>
+                    <button class="btn btn-danger" onclick="deleteSite(${idx})">Supprimer</button>
+                </div>
+                <div class="fields-grid">
+                    <div>
+                        <label>Nom du client</label>
+                        <input type="text" value="${s.nom || ''}" oninput="sites[${idx}].nom = this.value">
+                    </div>
+                    <div>
+                        <label>Secteur</label>
+                        <input type="text" value="${s.secteur || ''}" placeholder="ex: Avocats" oninput="sites[${idx}].secteur = this.value">
+                    </div>
+                    <div>
+                        <label>URL du site en ligne</label>
+                        <input type="text" value="${s.url || ''}" placeholder="https://..." oninput="sites[${idx}].url = this.value">
+                    </div>
+                    <div>
+                        <label>Lien admin.html</label>
+                        <input type="text" value="${s.adminUrl || ''}" placeholder="https://.../admin.html" oninput="sites[${idx}].adminUrl = this.value">
+                    </div>
+                    <div>
+                        <label>Repo GitHub</label>
+                        <input type="text" value="${s.repo || ''}" placeholder="https://github.com/..." oninput="sites[${idx}].repo = this.value">
+                    </div>
+                    <div>
+                        <label>Hébergement</label>
+                        <select onchange="sites[${idx}].hebergement = this.value; render();">
+                            <option value="Vercel" ${(s.hebergement || 'Vercel') === 'Vercel' ? 'selected' : ''}>Vercel</option>
+                            <option value="FTP" ${s.hebergement === 'FTP' ? 'selected' : ''}>FTP / mutualisé</option>
+                            <option value="Autre" ${s.hebergement === 'Autre' ? 'selected' : ''}>Autre</option>
+                        </select>
+                    </div>
+                </div>
+                <div style="margin-top:12px; display:flex; gap:16px; font-size:13px;">
+                    ${s.url ? `<a href="${s.url}" target="_blank" rel="noopener">🔗 Voir le site</a>` : ''}
+                    ${s.adminUrl ? `<a href="${s.adminUrl}" target="_blank" rel="noopener">⚙️ Admin</a>` : ''}
+                    ${s.repo ? `<a href="${s.repo}" target="_blank" rel="noopener">🐙 Repo</a>` : ''}
+                </div>
+            `;
+            container.appendChild(card);
+        });
+    }
+
+    function addSite() {
+        sites.unshift({ nom: 'Nouveau client', secteur: '', url: '', adminUrl: '', repo: '', hebergement: 'Vercel' });
+        render();
+    }
+
+    function deleteSite(idx) {
+        if (!confirm('Supprimer ce site de la liste ? (ne touche pas au repo/déploiement réel, juste à cette liste)')) return;
+        sites.splice(idx, 1);
+        render();
+    }
+
+    async function saveToGitHub() {
+        const btn = document.getElementById('save-btn');
+        const msg = document.getElementById('save-msg');
+        btn.disabled = true;
+        btn.textContent = '⏳ Enregistrement…';
+        msg.className = 'save-msg';
+        msg.textContent = '';
+
+        try {
+            const res = await fetch('/api/save', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ password: adminPassword, data: sites })
+            });
+            const body = await res.json().catch(() => ({}));
+
+            if (!res.ok) {
+                msg.className = 'save-msg err';
+                msg.textContent = '❌ ' + (body.error || 'Échec de la sauvegarde');
+            } else {
+                msg.className = 'save-msg ok';
+                msg.textContent = '✅ Enregistré';
+            }
+        } catch (e) {
+            msg.className = 'save-msg err';
+            msg.textContent = '❌ Erreur réseau : ' + e.message;
+        } finally {
+            btn.disabled = false;
+            btn.textContent = '💾 Enregistrer';
+        }
+    }
+</script>
+</body>
+</html>
