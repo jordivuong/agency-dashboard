@@ -6,5 +6,13 @@
         "adminUrl": "https://site-template-jordi-deb0.vercel.app/admin.html",
         "repo": "https://github.com/jordivuong/site-template",
         "hebergement": "Vercel"
+    },
+    {
+        "nom": "Super Avocat (démo FTP)",
+        "secteur": "Avocats (démo — contenu fictif)",
+        "url": "http://pyrat.zcom5719.odns.fr",
+        "adminUrl": "",
+        "repo": "",
+        "hebergement": "FTP"
     }
 ]
